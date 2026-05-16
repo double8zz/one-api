@@ -2,17 +2,21 @@ version: '3.4'
 
 services:
   one-api:
-    image: "${REGISTRY:-docker.io}/justsong/one-api:latest"
+    # image: "${REGISTRY:-docker.io}/justsong/one-api:latest"
+    # 注意：这里不要写 justsong/one-api，要让 docker-compose 自动构建本地代码
+    build: .
+    image: one-api:local
     container_name: one-api
     restart: always
     command: --log-dir /app/logs
     ports:
       - "3000:3000"
     volumes:
-      - ./data/oneapi:/data
+      # - ./data/oneapi:/data
+      - /data/oneapi:/data # 使用绝对路径，复用之前的数据库
       - ./logs:/app/logs
     environment:
-      - SQL_DSN=oneapi:123456@tcp(db:3306)/one-api  # 修改此行，或注释掉以使用 SQLite 作为数据库
+      # - SQL_DSN=oneapi:123456@tcp(db:3306)/one-api  # 修改此行，或注释掉以使用 SQLite 作为数据库
       - REDIS_CONN_STRING=redis://redis
       - SESSION_SECRET=random_string  # 修改为随机字符串
       - TZ=Asia/Shanghai
