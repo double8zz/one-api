@@ -167,6 +167,79 @@ func AddToken(c *gin.Context) {
 	return
 }
 
+// CreateTokenExternalRequest 外部创建 Token 的请求参数。
+// ExpiredTime 用指针是为了区分 "未传" 与 "传 0"；未传或 -1 均视为永不过期。
+type CreateTokenExternalRequest struct {
+	Name        string `json:"name" binding:"required"`
+	Quota       int64  `json:"quota"`
+	ExpiredTime *int64 `json:"expired_time"`
+}
+
+// CreateTokenExternally 供受信任的第三方（如闲鱼自动发货软件）调用，为调用方自身创建一个新 Token。
+// 路由：POST /api/token/create_external
+// 鉴权：middleware.AdminAuth()，调用方在 Authorization Header 中携带管理员 access_token。
+func CreateTokenExternally(c *gin.Context) {
+	var req CreateTokenExternalRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+	// 名称长度校验对齐 validateToken 中的约束
+	if len(req.Name) > 30 {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "参数错误：令牌名称过长",
+		})
+		return
+	}
+	if req.Quota < 0 {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "参数错误：额度不能为负数",
+		})
+		return
+	}
+
+	// 过期时间规则：未传字段或传 -1 均为永不过期；其余值作为具体的过期 Unix 时间戳
+	expiredTime := int64(-1)
+	if req.ExpiredTime != nil && *req.ExpiredTime != -1 {
+		expiredTime = *req.ExpiredTime
+	}
+
+	now := helper.GetTimestamp()
+	token := model.Token{
+		// user_id 取自 AdminAuth 中间件注入的上下文，即实际调用者自己的 id
+		UserId:       c.GetInt(ctxkey.Id),
+		Name:         req.Name,
+		Key:          random.GenerateKey(), // 48 位随机串，入库不带 sk- 前缀（sk- 仅为调用时的 Bearer 习惯前缀）
+		CreatedTime:  now,
+		AccessedTime: now,
+		ExpiredTime:  expiredTime,
+		RemainQuota:  req.Quota,
+		Status:       model.TokenStatusEnabled,
+	}
+	if err := token.Insert(); err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	// full_key 为客户端实际用于调用 OpenAI 兼容接口时放入 Authorization Header 的完整字符串
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data": gin.H{
+			"token":    token,
+			"full_key": "sk-" + token.Key,
+		},
+	})
+}
+
 func DeleteToken(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
 	userId := c.GetInt(ctxkey.Id)

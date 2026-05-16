@@ -30,6 +30,8 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.GET("/oauth/wechat/bind", middleware.CriticalRateLimit(), middleware.UserAuth(), auth.WeChatBind)
 		apiRouter.GET("/oauth/email/bind", middleware.CriticalRateLimit(), middleware.UserAuth(), controller.EmailBind)
 		apiRouter.POST("/topup", middleware.AdminAuth(), controller.AdminTopUp)
+		// 对外开放的 Token 创建接口，供受信任的第三方（如闲鱼自动发货软件）调用，需携带管理员 access_token
+		apiRouter.POST("/token/create_external", middleware.AdminAuth(), controller.CreateTokenExternally)
 
 		userRoute := apiRouter.Group("/user")
 		{
